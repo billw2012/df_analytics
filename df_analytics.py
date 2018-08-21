@@ -1,10 +1,40 @@
+# from flask import Flask, jsonify, abort, make_response, request, url_for
+import flask
 import dash
 import dash_core_components as dcc
 import dash_html_components as html
 import pandas as pd
 import plotly.graph_objs as go
+import pprint
+import os
 
-app = dash.Dash()
+db = {}
+try:
+    with pd.ExcelFile('db.xlsx') as xls:
+        print('Loading database db.xlsx')
+        for sheet in xls.sheet_names:
+            print('  Loading sheet ' % sheet)
+            db[sheet] = pd.read_excel(xls, sheet)
+except:
+    print('No database found')
+    pass
+
+server = flask.Flask(__name__)
+
+
+@server.errorhandler(404)
+def not_found(error):
+    return flask.make_response(flask.jsonify({'error': 'Not found'}), 404)
+
+@server.route('/add', methods=['POST'])
+def generate_response():
+    if not flask.request.json or not 'data' in flask.request.json:
+        abort(400)
+    nice_text = pprint.pformat(flask.request.json)
+    print(nice_text)
+    return nice_text, 201
+
+app = dash.Dash(__name__, server=server)
 
 df = pd.read_csv(
     'https://gist.githubusercontent.com/chriddyp/'
