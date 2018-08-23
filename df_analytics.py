@@ -54,97 +54,69 @@ def main():
 
     app = dash.Dash(__name__, server=server)
 
-    df = pd.read_csv(
-        'https://gist.githubusercontent.com/chriddyp/'
-        'cb5392c35661370d95f300086accea51/raw/'
-        '8e0768211f6b747c0db42a9ce9a0937dafcbd8b2/'
-        'indicators.csv')
-
-    available_indicators = df['Indicator Name'].unique()
-
     app.layout = html.Div([
         html.Div([
-
-            html.Div([
-                dcc.Dropdown(
-                    id='xaxis-column',
-                    options=[{'label': i, 'value': i} for i in available_indicators],
-                    value='Fertility rate, total (births per woman)'
-                ),
-                dcc.RadioItems(
-                    id='xaxis-type',
-                    options=[{'label': i, 'value': i} for i in ['Linear', 'Log']],
-                    value='Linear',
-                    labelStyle={'display': 'inline-block'}
-                )
-            ],
-            style={'width': '48%', 'display': 'inline-block'}),
-
-            html.Div([
-                dcc.Dropdown(
-                    id='yaxis-column',
-                    options=[{'label': i, 'value': i} for i in available_indicators],
-                    value='Life expectancy at birth, total (years)'
-                ),
-                dcc.RadioItems(
-                    id='yaxis-type',
-                    options=[{'label': i, 'value': i} for i in ['Linear', 'Log']],
-                    value='Linear',
-                    labelStyle={'display': 'inline-block'}
-                )
-            ],style={'width': '48%', 'float': 'right', 'display': 'inline-block'})
+            dcc.Dropdown(
+                id='metric-dropdown'
+            )
+            #, dcc.RangeSlider(id='time-rangeslider')
         ]),
-
-        dcc.Graph(id='indicator-graphic'),
-
-        dcc.Slider(
-            id='year--slider',
-            min=df['Year'].min(),
-            max=df['Year'].max(),
-            value=df['Year'].max(),
-            step=None,
-            marks={str(year): str(year) for year in df['Year'].unique()}
-        )
+        dcc.Graph(id='all-graph'),
+        #dcc.Graph(id='average-graph'),
+        dcc.Interval(id='interval', interval=1000, n_intervals=0)
     ])
 
     @app.callback(
-        dash.dependencies.Output('indicator-graphic', 'figure'),
-        [dash.dependencies.Input('xaxis-column', 'value'),
-        dash.dependencies.Input('yaxis-column', 'value'),
-        dash.dependencies.Input('xaxis-type', 'value'),
-        dash.dependencies.Input('yaxis-type', 'value'),
-        dash.dependencies.Input('year--slider', 'value')])
-    def update_graph(xaxis_column_name, yaxis_column_name,
-                    xaxis_type, yaxis_type,
-                    year_value):
-        dff = df[df['Year'] == year_value]
+        dash.dependencies.Output('metric-dropdown', 'options'),
+        [dash.dependencies.Input('interval', 'n_intervals')])
+    def update_metric_dropdown(value):
+        return [{'label': v, 'value': v} for v in [*db]]
 
-        return {
-            'data': [go.Scatter(
-                x=dff[dff['Indicator Name'] == xaxis_column_name]['Value'],
-                y=dff[dff['Indicator Name'] == yaxis_column_name]['Value'],
-                text=dff[dff['Indicator Name'] == yaxis_column_name]['Country Name'],
-                mode='markers',
-                marker={
-                    'size': 15,
-                    'opacity': 0.5,
-                    'line': {'width': 0.5, 'color': 'white'}
-                }
-            )],
-            'layout': go.Layout(
-                xaxis={
-                    'title': xaxis_column_name,
-                    'type': 'linear' if xaxis_type == 'Linear' else 'log'
-                },
-                yaxis={
-                    'title': yaxis_column_name,
-                    'type': 'linear' if yaxis_type == 'Linear' else 'log'
-                },
-                margin={'l': 40, 'b': 40, 't': 10, 'r': 0},
-                hovermode='closest'
+    @app.callback(
+        dash.dependencies.Output('all-graph', 'figure'),
+        [dash.dependencies.Input('metric-dropdown', 'value'),
+        dash.dependencies.Input('interval', 'n_intervals')])
+    def update_all_graph(value):
+        try:
+            df = db[value]
+            return go.Figure(
+                data=[
+                    go.Scatter(
+                        x=[1995, 1996, 1997, 1998, 1999, 2000, 2001, 2002, 2003,
+                        2004, 2005, 2006, 2007, 2008, 2009, 2010, 2011, 2012],
+                        y=[219, 146, 112, 127, 124, 180, 236, 207, 236, 263,
+                        350, 430, 474, 526, 488, 537, 500, 439],
+                        name='Rest of world',
+                        marker=go.Marker(
+                            color='rgb(55, 83, 109)'
+                        )
+                    ),
+                    go.Bar(
+                        x=[1995, 1996, 1997, 1998, 1999, 2000, 2001, 2002, 2003,
+                        2004, 2005, 2006, 2007, 2008, 2009, 2010, 2011, 2012],
+                        y=[16, 13, 10, 11, 28, 37, 43, 55, 56, 88, 105, 156, 270,
+                        299, 340, 403, 549, 499],
+                        name='China',
+                        marker=go.Marker(
+                            color='rgb(26, 118, 255)'
+                        )
+                    )
+                ],
+                layout=go.Layout(
+                    title='US Export of Plastic Scrap',
+                    showlegend=True,
+                    legend=go.Legend(
+                        x=0,
+                        y=1.0
+                    ),
+                    margin=go.Margin(l=40, r=0, t=40, b=30)
+                )
             )
-        }
+        except:
+            return None
+
     app.run_server()
+
     #try:
     if os.path.isfile(db_filename):
         os.remove(db_filename)
