@@ -47,6 +47,11 @@ def main():
             db[sheet] = pd.DataFrame()
             #flask.request.json)
         #else:
+        if "timestamp" in flask.request.json:
+            flask.request.json["timestamp"] = pd.to_datetime(flask.request.json["timestamp"], origin='julian')
+        #if "timestamp" in flask.request.json:
+        #    db[sheet] = db[sheet].append(pd.Series(flask.request.json, index=[flask.request.json["timestamp"]]))
+        #else:
         db[sheet] = db[sheet].append(flask.request.json, ignore_index=True)
         nice_text = pprint.pformat(flask.request.json)
         print(f"Added data to sheet {sheet}: {nice_text}")
@@ -54,56 +59,49 @@ def main():
 
     app = dash.Dash(__name__, server=server)
 
-    app.layout = html.Div([
-        html.Div([
-            dcc.Dropdown(
-                id='metric-dropdown'
-            )
-            #, dcc.RangeSlider(id='time-rangeslider')
-        ]),
-        dcc.Graph(id='all-graph'),
-        #dcc.Graph(id='average-graph'),
-        dcc.Interval(id='interval', interval=1000, n_intervals=0)
-    ])
+    def serve_layout():
+        return html.Div([
+            html.Div([
+                dcc.Dropdown(
+                    id='metric-dropdown',
+                    options=[{'label': v, 'value': v} for v in [*db]]
+                )
+                #, dcc.RangeSlider(id='time-rangeslider')
+            ]),
+            dcc.Graph(id='all-graph'),
+            #dcc.Graph(id='average-graph'),
+            dcc.Interval(id='interval', interval=1000, n_intervals=0)
+        ])
 
-    @app.callback(
-        dash.dependencies.Output('metric-dropdown', 'options'),
-        [dash.dependencies.Input('interval', 'n_intervals')])
-    def update_metric_dropdown(value):
-        return [{'label': v, 'value': v} for v in [*db]]
+    app.layout = serve_layout
+
+    # @app.callback(
+    #     dash.dependencies.Output('metric-dropdown', 'options'),
+    #     [dash.dependencies.Input('interval', 'n_intervals')])
+    # def update_metric_dropdown(value):
+    #     return [{'label': v, 'value': v} for v in [*db]]
 
     @app.callback(
         dash.dependencies.Output('all-graph', 'figure'),
         [dash.dependencies.Input('metric-dropdown', 'value'),
         dash.dependencies.Input('interval', 'n_intervals')])
-    def update_all_graph(value):
+    def update_all_graph(metric, interval):
         try:
-            df = db[value]
+            df = db[metric]
+            # Split by dwarf
+            dwarfs = df.dwarf.unique()
+            data = []
+            for dwarf in dwarfs:
+                dwarf_metric = df[df.dwarf == dwarf]
+                data.append(go.Scatter(
+                        x=dwarf_metric.timestamp,
+                        y=dwarf_metric.stress,
+                        name=dwarf,
+                        marker=go.Marker(color='rgb(55, 83, 109)')))
             return go.Figure(
-                data=[
-                    go.Scatter(
-                        x=[1995, 1996, 1997, 1998, 1999, 2000, 2001, 2002, 2003,
-                        2004, 2005, 2006, 2007, 2008, 2009, 2010, 2011, 2012],
-                        y=[219, 146, 112, 127, 124, 180, 236, 207, 236, 263,
-                        350, 430, 474, 526, 488, 537, 500, 439],
-                        name='Rest of world',
-                        marker=go.Marker(
-                            color='rgb(55, 83, 109)'
-                        )
-                    ),
-                    go.Bar(
-                        x=[1995, 1996, 1997, 1998, 1999, 2000, 2001, 2002, 2003,
-                        2004, 2005, 2006, 2007, 2008, 2009, 2010, 2011, 2012],
-                        y=[16, 13, 10, 11, 28, 37, 43, 55, 56, 88, 105, 156, 270,
-                        299, 340, 403, 549, 499],
-                        name='China',
-                        marker=go.Marker(
-                            color='rgb(26, 118, 255)'
-                        )
-                    )
-                ],
+                data=data,
                 layout=go.Layout(
-                    title='US Export of Plastic Scrap',
+                    title='Stress',
                     showlegend=True,
                     legend=go.Legend(
                         x=0,
