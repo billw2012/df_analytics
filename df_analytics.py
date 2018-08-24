@@ -7,9 +7,12 @@ import pandas as pd
 import plotly.graph_objs as go
 import pprint
 import os
+import requests
+import threading
+import random
 
 db_filename = 'db.xlsx'
-def main():
+def main(debug):
     db = {}
     try:
         with pd.ExcelFile(db_filename) as xls:
@@ -48,7 +51,8 @@ def main():
             #flask.request.json)
         #else:
         if "timestamp" in flask.request.json:
-            flask.request.json["timestamp"] = pd.to_datetime(flask.request.json["timestamp"], origin='julian')
+            # DOING: use tslib + 'julian' epoch to fake the date here.
+            flask.request.json["timestamp"] = pd.to_datetime(flask.request.json["timestamp"], dayfirst=True, exact=True, format="%d/%m/%Y")
         #if "timestamp" in flask.request.json:
         #    db[sheet] = db[sheet].append(pd.Series(flask.request.json, index=[flask.request.json["timestamp"]]))
         #else:
@@ -63,8 +67,12 @@ def main():
         return html.Div([
             html.Div([
                 dcc.Dropdown(
-                    id='metric-dropdown',
+                    id='sheet-dropdown',
                     options=[{'label': v, 'value': v} for v in [*db]]
+                    # TODO: set default value
+                ),
+                dcc.Dropdown(
+                    id='metric-dropdown'
                 )
                 #, dcc.RangeSlider(id='time-rangeslider')
             ]),
@@ -75,19 +83,22 @@ def main():
 
     app.layout = serve_layout
 
-    # @app.callback(
-    #     dash.dependencies.Output('metric-dropdown', 'options'),
-    #     [dash.dependencies.Input('interval', 'n_intervals')])
-    # def update_metric_dropdown(value):
-    #     return [{'label': v, 'value': v} for v in [*db]]
+    @app.callback(
+        dash.dependencies.Output('metric-dropdown', 'options'),
+        [dash.dependencies.Input('sheet-dropdown', 'value')])
+    def update_metric_dropdown(sheet):
+        if sheet in db:
+            return [{'label': v, 'value': v} for v in db[sheet].columns]
+        return []
 
     @app.callback(
         dash.dependencies.Output('all-graph', 'figure'),
         [dash.dependencies.Input('metric-dropdown', 'value'),
-        dash.dependencies.Input('interval', 'n_intervals')])
-    def update_all_graph(metric, interval):
+        dash.dependencies.Input('interval', 'n_intervals')],
+        [dash.dependencies.State('sheet-dropdown', 'value')])
+    def update_all_graph(metric, interval, sheet):
         try:
-            df = db[metric]
+            df = db[sheet]
             # Split by dwarf
             dwarfs = df.dwarf.unique()
             data = []
@@ -95,13 +106,13 @@ def main():
                 dwarf_metric = df[df.dwarf == dwarf]
                 data.append(go.Scatter(
                         x=dwarf_metric.timestamp,
-                        y=dwarf_metric.stress,
+                        y=dwarf_metric[metric],
                         name=dwarf,
                         marker=go.Marker(color='rgb(55, 83, 109)')))
             return go.Figure(
                 data=data,
                 layout=go.Layout(
-                    title='Stress',
+                    title=metric,
                     showlegend=True,
                     legend=go.Legend(
                         x=0,
@@ -113,7 +124,36 @@ def main():
         except:
             return None
 
-    app.run_server()
+    if debug:
+        debug_data_thread = None
+        stop_debug_data_thread_event = threading.Event()
+        def debug_data_thread_fn():
+            dwarfs = ['jay', 'bob', 'bill']
+            year = 123
+            month = 5
+            day = 1
+            while not stop_debug_data_thread_event.wait(10):
+                for dwarf in dwarfs:
+                    requests.post("http://127.0.0.1:8050/debug/add", json={
+                        'timestamp': f"{day:02}/{month:02}/{year:04}", 
+                        'dwarf': dwarf, 
+                        'stress': random.randint(-100000, 100000),
+                        'focus': random.randint(-10000, 10000)
+                        })
+                day = day + 1
+                if day > 28:
+                    day = 1
+                    month = month + 1
+                    if month > 12:
+                        month = 1
+                        year = year + 1
+        debug_data_thread = threading.Thread(None, debug_data_thread_fn)
+        debug_data_thread.start()
+        app.run_server()
+        stop_debug_data_thread_event.set()
+        debug_data_thread.join()
+    else:
+        app.run_server()
 
     #try:
     if os.path.isfile(db_filename):
@@ -130,4 +170,4 @@ def main():
 
 
 if __name__ == '__main__':
-    main()
+    main(True)
