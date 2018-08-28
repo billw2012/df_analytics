@@ -10,6 +10,7 @@ import os
 import requests
 import threading
 import random
+import gc
 
 db_filename = 'db.xlsx'
 def main(debug):
@@ -36,8 +37,7 @@ def main(debug):
 
     # e.g.:
     # {
-    # 	"year": 123,
-    # 	"tick_in_year": 2244,
+    # 	"tick": 12323123,
     # 	"dwarf": "bill the dwarf",
     # 	"stress": 32008
     # }
@@ -50,9 +50,9 @@ def main(debug):
             db[sheet] = pd.DataFrame()
             #flask.request.json)
         #else:
-        if "timestamp" in flask.request.json:
-            # DOING: use tslib + 'julian' epoch to fake the date here.
-            flask.request.json["timestamp"] = pd.to_datetime(flask.request.json["timestamp"], dayfirst=True, exact=True, format="%d/%m/%Y")
+        # if "tick" in flask.request.json:
+        #     # DOING: use tslib + 'julian' epoch to fake the date here.
+        #     flask.request.json["tick"] = pd.to_datetime(flask.request.json["timestamp"], dayfirst=True, exact=True, format="%d/%m/%Y")
         #if "timestamp" in flask.request.json:
         #    db[sheet] = db[sheet].append(pd.Series(flask.request.json, index=[flask.request.json["timestamp"]]))
         #else:
@@ -64,11 +64,16 @@ def main(debug):
     app = dash.Dash(__name__, server=server)
 
     def serve_layout():
+        cols = [*db]
+        value = None
+        if cols:
+            value = cols[0]
         return html.Div([
             html.Div([
                 dcc.Dropdown(
                     id='sheet-dropdown',
-                    options=[{'label': v, 'value': v} for v in [*db]]
+                    options=[{'label': v, 'value': v} for v in cols],
+                    value=value
                     # TODO: set default value
                 ),
                 dcc.Dropdown(
@@ -76,7 +81,7 @@ def main(debug):
                 )
                 #, dcc.RangeSlider(id='time-rangeslider')
             ]),
-            dcc.Graph(id='all-graph'),
+            dcc.Graph(id='all-graph', animate=True),
             #dcc.Graph(id='average-graph'),
             dcc.Interval(id='interval', interval=1000, n_intervals=0)
         ])
@@ -102,10 +107,11 @@ def main(debug):
             # Split by dwarf
             dwarfs = df.dwarf.unique()
             data = []
+            
             for dwarf in dwarfs:
                 dwarf_metric = df[df.dwarf == dwarf]
                 data.append(go.Scatter(
-                        x=dwarf_metric.timestamp,
+                        x=dwarf_metric.tick,
                         y=dwarf_metric[metric],
                         name=dwarf,
                         marker=go.Marker(color='rgb(55, 83, 109)')))
@@ -114,11 +120,9 @@ def main(debug):
                 layout=go.Layout(
                     title=metric,
                     showlegend=True,
-                    legend=go.Legend(
-                        x=0,
-                        y=1.0
-                    ),
-                    margin=go.Margin(l=40, r=0, t=40, b=30)
+                    #legend=go.Legend(x=0, y=1.0),
+                    xaxis=dict(range=[max(df.tick) - 30,max(df.tick)]), yaxis=dict(range=[min(df[metric]),max(df[metric])])
+                    # margin=go.Margin(l=40, r=0, t=40, b=30)
                 )
             )
         except:
@@ -128,25 +132,19 @@ def main(debug):
         debug_data_thread = None
         stop_debug_data_thread_event = threading.Event()
         def debug_data_thread_fn():
-            dwarfs = ['jay', 'bob', 'bill']
-            year = 123
-            month = 5
-            day = 1
-            while not stop_debug_data_thread_event.wait(10):
+            dwarfs = ['jay', 'bob', 'bill', 'alice', 'gwen', 'urist', 'mcbob', 'jim', 'xander', 'john', 'joe', 'lit', 'web', 'alex', 'sam', 'rick']
+            tick = 1
+            s = requests.Session()
+            while not stop_debug_data_thread_event.wait(1):
                 for dwarf in dwarfs:
-                    requests.post("http://127.0.0.1:8050/debug/add", json={
-                        'timestamp': f"{day:02}/{month:02}/{year:04}", 
+                    r = s.post("http://127.0.0.1:8050/debug/add", json={
+                        'tick': tick, 
                         'dwarf': dwarf, 
                         'stress': random.randint(-100000, 100000),
                         'focus': random.randint(-10000, 10000)
                         })
-                day = day + 1
-                if day > 28:
-                    day = 1
-                    month = month + 1
-                    if month > 12:
-                        month = 1
-                        year = year + 1
+                    r.raise_for_status()
+                tick = tick + 1
         debug_data_thread = threading.Thread(None, debug_data_thread_fn)
         debug_data_thread.start()
         app.run_server()
@@ -170,4 +168,4 @@ def main(debug):
 
 
 if __name__ == '__main__':
-    main(True)
+    main(debug=True)
