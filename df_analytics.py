@@ -12,6 +12,8 @@ import threading
 import random
 
 db_filename = 'db.xlsx'
+
+
 def main(debug):
     db = {}
     try:
@@ -32,7 +34,7 @@ def main(debug):
 
     @server.errorhandler(404)
     def not_found(error):
-        return flask.make_response(flask.jsonify({'error': 'Not found'}), 404)
+        return flask.make_response(flask.jsonify({'error': error}), 404)
 
     # e.g.:
     # {
@@ -41,34 +43,33 @@ def main(debug):
     # 	"dwarf": "bill the dwarf",
     # 	"stress": 32008
     # }
-    @server.route('/<sheet>/add', methods=['POST'])
-    def add_data(sheet):
+    @server.route('/<db_sheet>/add', methods=['POST'])
+    def add_data(db_sheet):
         if not flask.request.json:
             abort(400)
-        if not sheet in db.keys():
-            print(f"Creating sheet {sheet}")
-            db[sheet] = pd.DataFrame()
-            #flask.request.json)
-        #else:
-        if "timestamp" in flask.request.json:
-            # DOING: use tslib + 'julian' epoch to fake the date here.
-            flask.request.json["timestamp"] = pd.to_datetime(flask.request.json["timestamp"], dayfirst=True, exact=True, format="%d/%m/%Y")
-        #if "timestamp" in flask.request.json:
-        #    db[sheet] = db[sheet].append(pd.Series(flask.request.json, index=[flask.request.json["timestamp"]]))
-        #else:
-        db[sheet] = db[sheet].append(flask.request.json, ignore_index=True)
+        if db_sheet not in db.keys():
+            print(f"Creating sheet {db_sheet}")
+            db[db_sheet] = pd.DataFrame()
+        # if "timestamp" in flask.request.json:
+        #     flask.request.json["timestamp"] = pd.to_datetime(flask.request.json["timestamp"], dayfirst=True, exact=True, format="%d/%m/%Y", errors='ignore')
+        db[db_sheet] = db[db_sheet].append(flask.request.json, ignore_index=True)
         nice_text = pprint.pformat(flask.request.json)
-        print(f"Added data to sheet {sheet}: {nice_text}")
+        print(f"Added data to sheet {db_sheet}: {nice_text}")
         return nice_text, 201
 
     app = dash.Dash(__name__, server=server)
 
     def serve_layout():
+        sheets = [*db]
+        default = None
+        if len(sheets) > 0:
+            default = sheets[0]
         return html.Div([
             html.Div([
                 dcc.Dropdown(
                     id='sheet-dropdown',
-                    options=[{'label': v, 'value': v} for v in [*db]]
+                    options=[{'label': v, 'value': v} for v in sheets],
+                    value=default
                     # TODO: set default value
                 ),
                 dcc.Dropdown(
@@ -78,7 +79,7 @@ def main(debug):
             ]),
             dcc.Graph(id='all-graph'),
             #dcc.Graph(id='average-graph'),
-            dcc.Interval(id='interval', interval=1000, n_intervals=0)
+            dcc.Interval(id='interval', interval=5000, n_intervals=0)
         ])
 
     app.layout = serve_layout
@@ -88,7 +89,7 @@ def main(debug):
         [dash.dependencies.Input('sheet-dropdown', 'value')])
     def update_metric_dropdown(sheet):
         if sheet in db:
-            return [{'label': v, 'value': v} for v in db[sheet].columns]
+            return [{'label': v, 'value': v} for v in db[sheet].columns if not v in ['dwarf', 'timestamp', 'tick']]
         return []
 
     @app.callback(
@@ -105,7 +106,7 @@ def main(debug):
             for dwarf in dwarfs:
                 dwarf_metric = df[df.dwarf == dwarf]
                 data.append(go.Scatter(
-                        x=dwarf_metric.timestamp,
+                        x=dwarf_metric.tick,
                         y=dwarf_metric[metric],
                         name=dwarf,
                         marker=go.Marker(color='rgb(55, 83, 109)')))
@@ -129,24 +130,22 @@ def main(debug):
         stop_debug_data_thread_event = threading.Event()
         def debug_data_thread_fn():
             dwarfs = ['jay', 'bob', 'bill']
-            year = 123
-            month = 5
-            day = 1
-            while not stop_debug_data_thread_event.wait(10):
+            # year = 123
+            # month = 5
+            # day = 1
+            tick = 322133322
+            delay = 2
+            while not stop_debug_data_thread_event.wait(delay):
                 for dwarf in dwarfs:
                     requests.post("http://127.0.0.1:8050/debug/add", json={
-                        'timestamp': f"{day:02}/{month:02}/{year:04}", 
+                        'tick': tick,
                         'dwarf': dwarf, 
                         'stress': random.randint(-100000, 100000),
                         'focus': random.randint(-10000, 10000)
                         })
-                day = day + 1
-                if day > 28:
-                    day = 1
-                    month = month + 1
-                    if month > 12:
-                        month = 1
-                        year = year + 1
+                tick = tick + 1200
+                delay = 10
+        
         debug_data_thread = threading.Thread(None, debug_data_thread_fn)
         debug_data_thread.start()
         app.run_server()
@@ -170,4 +169,4 @@ def main(debug):
 
 
 if __name__ == '__main__':
-    main(True)
+    main(False)
