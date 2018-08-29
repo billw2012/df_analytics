@@ -13,6 +13,8 @@ import random
 import gc
 
 db_filename = 'db.xlsx'
+
+
 def main(debug):
     db = {}
     try:
@@ -34,6 +36,7 @@ def main(debug):
     @server.errorhandler(404)
     def not_found(error):
         return flask.make_response(flask.jsonify({'error': 'Not found'}), 404)
+        return flask.make_response(flask.jsonify({'error': error}), 404)
 
     # e.g.:
     # {
@@ -41,39 +44,33 @@ def main(debug):
     # 	"dwarf": "bill the dwarf",
     # 	"stress": 32008
     # }
-    @server.route('/<sheet>/add', methods=['POST'])
-    def add_data(sheet):
+    @server.route('/<db_sheet>/add', methods=['POST'])
+    def add_data(db_sheet):
         if not flask.request.json:
             abort(400)
-        if not sheet in db.keys():
-            print(f"Creating sheet {sheet}")
-            db[sheet] = pd.DataFrame()
-            #flask.request.json)
-        #else:
-        # if "tick" in flask.request.json:
-        #     # DOING: use tslib + 'julian' epoch to fake the date here.
-        #     flask.request.json["tick"] = pd.to_datetime(flask.request.json["timestamp"], dayfirst=True, exact=True, format="%d/%m/%Y")
-        #if "timestamp" in flask.request.json:
-        #    db[sheet] = db[sheet].append(pd.Series(flask.request.json, index=[flask.request.json["timestamp"]]))
-        #else:
-        db[sheet] = db[sheet].append(flask.request.json, ignore_index=True)
+        if db_sheet not in db.keys():
+            print(f"Creating sheet {db_sheet}")
+            db[db_sheet] = pd.DataFrame()
+        # if "timestamp" in flask.request.json:
+        #     flask.request.json["timestamp"] = pd.to_datetime(flask.request.json["timestamp"], dayfirst=True, exact=True, format="%d/%m/%Y", errors='ignore')
+        db[db_sheet] = db[db_sheet].append(flask.request.json, ignore_index=True)
         nice_text = pprint.pformat(flask.request.json)
-        print(f"Added data to sheet {sheet}: {nice_text}")
+        print(f"Added data to sheet {db_sheet}: {nice_text}")
         return nice_text, 201
 
     app = dash.Dash(__name__, server=server)
 
     def serve_layout():
-        cols = [*db]
-        value = None
-        if cols:
-            value = cols[0]
+        sheets = [*db]
+        default = None
+        if sheets:
+            default = sheets[0]
         return html.Div([
             html.Div([
                 dcc.Dropdown(
                     id='sheet-dropdown',
-                    options=[{'label': v, 'value': v} for v in cols],
-                    value=value
+                    options=[{'label': v, 'value': v} for v in sheets],
+                    value=default
                     # TODO: set default value
                 ),
                 dcc.Dropdown(
@@ -83,7 +80,7 @@ def main(debug):
             ]),
             dcc.Graph(id='all-graph', animate=True),
             #dcc.Graph(id='average-graph'),
-            dcc.Interval(id='interval', interval=1000, n_intervals=0)
+            dcc.Interval(id='interval', interval=5000, n_intervals=0)
         ])
 
     app.layout = serve_layout
@@ -93,7 +90,7 @@ def main(debug):
         [dash.dependencies.Input('sheet-dropdown', 'value')])
     def update_metric_dropdown(sheet):
         if sheet in db:
-            return [{'label': v, 'value': v} for v in db[sheet].columns]
+            return [{'label': v, 'value': v} for v in db[sheet].columns if not v in ['dwarf', 'timestamp', 'tick']]
         return []
 
     @app.callback(
