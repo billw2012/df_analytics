@@ -35,7 +35,6 @@ def main(debug):
 
     @server.errorhandler(404)
     def not_found(error):
-        return flask.make_response(flask.jsonify({'error': 'Not found'}), 404)
         return flask.make_response(flask.jsonify({'error': error}), 404)
 
     # e.g.:
@@ -132,7 +131,7 @@ def main(debug):
             dwarfs = ['jay', 'bob', 'bill', 'alice', 'gwen', 'urist', 'mcbob', 'jim', 'xander', 'john', 'joe', 'lit', 'web', 'alex', 'sam', 'rick']
             tick = 1
             s = requests.Session()
-            while not stop_debug_data_thread_event.wait(1):
+            while not stop_debug_data_thread_event.wait(5):
                 for dwarf in dwarfs:
                     r = s.post("http://127.0.0.1:8050/debug/add", json={
                         'tick': tick, 
