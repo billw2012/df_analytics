@@ -4,13 +4,14 @@ import dash
 import dash_core_components as dcc
 import dash_html_components as html
 import pandas as pd
+import numpy as np
 import plotly.graph_objs as go
 import pprint
 import os
 import requests
 import threading
 import random
-import gc
+import json
 
 db_filename = 'db.xlsx'
 
@@ -92,43 +93,58 @@ def main(debug):
             return [{'label': v, 'value': v} for v in db[sheet].columns if not v in ['dwarf', 'timestamp', 'tick']]
         return []
 
+    colors = np.random.randn(500)
     @app.callback(
         dash.dependencies.Output('all-graph', 'figure'),
         [dash.dependencies.Input('metric-dropdown', 'value'),
         dash.dependencies.Input('interval', 'n_intervals')],
         [dash.dependencies.State('sheet-dropdown', 'value')])
     def update_all_graph(metric, interval, sheet):
-        try:
-            df = db[sheet]
-            # Split by dwarf
-            dwarfs = df.dwarf.unique()
-            data = []
-            
-            for dwarf in dwarfs:
-                dwarf_metric = df[df.dwarf == dwarf]
-                data.append(go.Scatter(
-                        x=dwarf_metric.tick,
-                        y=dwarf_metric[metric],
-                        name=dwarf,
-                        marker=go.Marker(color='rgb(55, 83, 109)')))
-            return go.Figure(
-                data=data,
-                layout=go.Layout(
-                    title=metric,
-                    showlegend=True,
-                    #legend=go.Legend(x=0, y=1.0),
-                    xaxis=dict(range=[max(df.tick) - 30,max(df.tick)]), yaxis=dict(range=[min(df[metric]),max(df[metric])])
-                    # margin=go.Margin(l=40, r=0, t=40, b=30)
-                )
-            )
-        except:
+        #try:
+        if not sheet or not metric:
             return None
+        
+        df = db[sheet]
+        # Split by dwarf
+        dwarfs = df.dwarf.unique()
+        data = []
+        
+        for dwarf in dwarfs:
+            dwarf_metric = df[df.dwarf == dwarf]
+            data.append(go.Scatter(
+                    x=dwarf_metric.tick,
+                    y=dwarf_metric[metric],
+                    mode='lines',
+                    name=dwarf,
+                    marker={'color':colors},
+                    line={'width':1}))
+        
+        return go.Figure(
+            data=data,
+            layout=go.Layout(
+                title=metric,
+                #legend=go.Legend(x=0, y=1.0),
+                xaxis=dict(range=[max(df.tick) - 30, max(df.tick)]), 
+                yaxis=dict(range=[min(df[metric]), max(df[metric])])
+                # margin=go.Margin(l=40, r=0, t=40, b=30)
+            )
+        )
+        #except:
+        #    return None
 
     if debug:
         debug_data_thread = None
         stop_debug_data_thread_event = threading.Event()
         def debug_data_thread_fn():
-            dwarfs = ['jay', 'bob', 'bill', 'alice', 'gwen', 'urist', 'mcbob', 'jim', 'xander', 'john', 'joe', 'lit', 'web', 'alex', 'sam', 'rick']
+            # Load random names generated using https://next.json-generator.com/ with:
+            # [
+            #   {
+            #   	'repeat(100, 100)': '{{firstName()}} {{surname()}}'
+            #   }
+            # ]
+            names_file = open('random_names.txt')
+            dwarfs = json.load(names_file)
+            #['jay', 'bob', 'bill', 'alice', 'gwen', 'urist', 'mcbob', 'jim', 'xander', 'john', 'joe', 'lit', 'web', 'alex', 'sam', 'rick',]
             tick = 1
             s = requests.Session()
             while not stop_debug_data_thread_event.wait(5):
