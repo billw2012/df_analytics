@@ -101,31 +101,44 @@ def main(debug):
         [dash.dependencies.State('sheet-dropdown', 'value')])
     def update_all_graph(metric, interval, sheet):
         #try:
-        if not sheet or not metric:
+        if not sheet or not metric or not sheet in db:
             return None
         
         df = db[sheet]
-        # Split by dwarf
-        dwarfs = df.dwarf.unique()
-        data = []
+        if not 'tick' in df.columns:
+            return None
         
-        for dwarf in dwarfs:
-            dwarf_metric = df[df.dwarf == dwarf]
+        # max tick is tick of the last entry ever
+        max_tick = df.tick.iloc[-1]
+        # lets look at the last 28 days (an in game month)
+        min_tick = max_tick - 1200 * 28
+
+        # Select the data we want
+        # We want a table:
+        #   trimmed to the tick range we care about, 
+        #   indexed by dwarf name, with the values being the metric specified for each dwarf,
+        #   with missing values for specific ticks interpolated
+        #   trimmed to and sorted by the n highest values in the latest result
+        metric_df = df[df.tick >= min_tick].pivot(index='dwarf', columns='tick', values=metric).interpolate(1).nlargest(20, columns=max_tick)
+
+        for dwarf_name, dwarf_metric in metric_df.itrrows():
+            # dwarf_metric = df[df.dwarf == dwarf]
             data.append(go.Scatter(
-                    x=dwarf_metric.tick,
-                    y=dwarf_metric[metric],
+                    x=metric_df.columns,
+                    y=dwarf_metric,
                     mode='lines',
-                    name=dwarf,
+                    name=dwarf_name,
                     marker={'color':colors},
                     line={'width':1}))
         
         return go.Figure(
             data=data,
             layout=go.Layout(
-                title=metric,
+                title=metric
+                #,
                 #legend=go.Legend(x=0, y=1.0),
-                xaxis=dict(range=[max(df.tick) - 30, max(df.tick)]), 
-                yaxis=dict(range=[min(df[metric]), max(df[metric])])
+                #xaxis=dict(range=[min_tick, max_tick]), 
+                #yaxis=dict(range=[min(df[metric]), max(df[metric])])
                 # margin=go.Margin(l=40, r=0, t=40, b=30)
             )
         )
